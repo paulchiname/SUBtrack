@@ -1,0 +1,435 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>SubTrack</title>
+<style>
+body { font-family: Arial, sans-serif; padding: 20px; background: #f5f5f5; }
+body.dark { background: #1a1a1a; color: #fff; }
+h1 { color: #333; }
+body.dark h1 { color: #fff; }
+button { padding: 10px 16px; background: #567CBD; color: white; border: none; cursor: pointer; border-radius: 6px; margin: 5px; font-size: 14px; }
+button:hover { background: #4a6daa; }
+input, select { padding: 10px; margin: 8px 0; width: 100%; border: 1px solid #ccc; border-radius: 4px; box-sizing: border-box; }
+body.dark input, body.dark select { background: #333; color: #fff; border-color: #555; }
+.toolbar { display: flex; gap: 10px; margin: 15px 0; flex-wrap: wrap; }
+.toolbar input { flex: 1; min-width: 200px; }
+.toolbar select, .toolbar button { flex: 0; width: auto; }
+.stat { background: white; padding: 15px; margin: 10px 0; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,.1); }
+body.dark .stat { background: #333; }
+.stat-val { font-size: 24px; font-weight: bold; color: #567CBD; }
+.alert { background: #ffebee; padding: 12px; margin: 10px 0; border-left: 4px solid #d32f2f; border-radius: 4px; color: #d32f2f; }
+body.dark .alert { background: #4a1a1a; }
+.pills { display: flex; gap: 8px; flex-wrap: wrap; margin: 10px 0; }
+.pill { padding: 6px 12px; background: white; border: 1px solid #ccc; border-radius: 20px; cursor: pointer; font-size: 12px; }
+.pill.active { background: #567CBD; color: white; border-color: #567CBD; }
+body.dark .pill { background: #333; }
+.card { background: white; padding: 12px; margin: 8px 0; border-left: 4px solid #567CBD; border-radius: 4px; }
+body.dark .card { background: #333; }
+.card-info { flex: 1; }
+.card-name { font-weight: bold; }
+.card-meta { font-size: 12px; color: #999; }
+.card-paused { opacity: 0.5; }
+.days-badge { display: inline-block; background: #ff9800; color: white; padding: 3px 8px; border-radius: 12px; font-size: 12px; margin: 0 5px; }
+.days-badge.soon { background: #d32f2f; }
+.days-badge.ok { background: #4caf50; }
+.section-title { font-weight: bold; margin-top: 20px; margin-bottom: 10px; color: #567CBD; font-size: 14px; }
+.modal { display: none; background: white; padding: 20px; border-radius: 8px; margin: 20px 0; border: 1px solid #ddd; }
+body.dark .modal { background: #333; border-color: #555; }
+.modal.show { display: block; }
+.hidden { display: none; }
+</style>
+</head>
+<body>
+
+<div style="display: flex; justify-content: space-between; align-items: center;">
+  <h1>SubTrack</h1>
+  <div style="display: flex; gap: 10px;">
+    <button onclick="toggleDark()" style="width: auto;" title="Toggle dark mode">🌙 Dark Mode</button>
+    <button onclick="showHelp()" style="width: auto;" title="Show help">❓ Help</button>
+  </div>
+</div>
+
+<div class="toolbar">
+  <input id="search" type="text" placeholder="🔍 Search subscriptions..." onkeyup="render()">
+  <select id="catFilter" onchange="render()" title="Filter by category">
+    <option value="">All Categories</option>
+    <option value="streaming">Streaming</option>
+    <option value="software">Software</option>
+    <option value="tools">Tools</option>
+    <option value="health">Health</option>
+    <option value="education">Education</option>
+    <option value="other">Other</option>
+  </select>
+  <select id="sortBy" onchange="render()" title="Sort subscriptions">
+    <option value="name">Sort by Name</option>
+    <option value="cost">Sort by Cost</option>
+    <option value="date">Sort by Renewal</option>
+  </select>
+  <button onclick="openAdd()" style="width: auto;" title="Add a new subscription">➕ Add Sub</button>
+  <button onclick="openSetting()" style="width: auto;" title="Settings & preferences">⚙️ Settings</button>
+  <button onclick="exportData()" style="width: auto;" title="Download backup as JSON">📥 Backup</button>
+</div>
+
+<div id="help-section" class="modal">
+  <h2>How to Use SubTrack</h2>
+  <p><strong>➕ Add Sub:</strong> Click to add a new subscription</p>
+  <p><strong>🔍 Search:</strong> Type to find subscriptions by name</p>
+  <p><strong>Categories:</strong> Filter subscriptions by type</p>
+  <p><strong>Sort:</strong> Organize by name, cost, or renewal date</p>
+  <p><strong>⚙️ Settings:</strong> Change currency, set budget, clear data</p>
+  <p><strong>📥 Backup:</strong> Download your data as a backup file</p>
+  <p><strong>🌙 Dark Mode:</strong> Toggle dark theme</p>
+  <p><strong>Pause Button (⏸️):</strong> Temporarily hide a subscription</p>
+  <p><strong>Delete Button:</strong> Permanently remove a subscription</p>
+  <p><strong>Red Badge:</strong> Renews within 7 days (urgent!)</p>
+  <p><strong>Orange Badge:</strong> Renews within 30 days</p>
+  <p><strong>Green Badge:</strong> Renews after 30 days</p>
+  <button onclick="closeHelp()" style="margin-top: 15px;">Close</button>
+</div>
+
+<div id="budget-alert" class="alert hidden"></div>
+
+<div class="stat">
+  <div>Monthly Cost</div>
+  <div class="stat-val" id="monthly">$0.00</div>
+</div>
+
+<div class="stat">
+  <div>Yearly Cost</div>
+  <div class="stat-val" id="yearly">$0.00</div>
+</div>
+
+<div class="section-title">⏰ Renewing Soon (Next 30 Days)</div>
+<div id="upcoming"></div>
+
+<div class="section-title">📋 All Subscriptions</div>
+<div id="subscriptions"></div>
+
+<div id="addModal" class="modal">
+  <h2>Add Subscription</h2>
+  <input id="addName" type="text" placeholder="Name (e.g. Netflix)">
+  <input id="addCost" type="number" placeholder="Cost" step="0.01" min="0">
+  <select id="addCycle">
+    <option value="monthly">Monthly</option>
+    <option value="yearly">Yearly</option>
+  </select>
+  <select id="addCategory">
+    <option value="streaming">Streaming</option>
+    <option value="software">Software</option>
+    <option value="tools">Tools</option>
+    <option value="health">Health</option>
+    <option value="education">Education</option>
+    <option value="other">Other</option>
+  </select>
+  <input id="addDate" type="date" placeholder="Renewal Date">
+  <input id="addPayment" type="text" placeholder="Payment Method (e.g. Visa)">
+  <textarea id="addNotes" placeholder="Notes" style="height: 80px;"></textarea>
+  <button onclick="saveSubscription()">Save</button>
+  <button onclick="closeAdd()">Cancel</button>
+</div>
+
+<div id="settingModal" class="modal">
+  <h2>Settings</h2>
+  <label>Currency Symbol</label>
+  <input id="currencyInput" type="text" placeholder="$" maxlength="2">
+  <label>Monthly Budget (optional)</label>
+  <input id="budgetInput" type="number" placeholder="0" min="0">
+  <button onclick="saveSetting()">Save</button>
+  <button onclick="clearAllData()" style="background: #d32f2f; margin-top: 10px;">🗑️ Clear All Data</button>
+  <button onclick="closeSetting()">Cancel</button>
+</div>
+
+<script>
+var database = {
+  subs: [],
+  currency: '$',
+  budget: 0,
+  dark: false
+};
+
+function loadData() {
+  var stored = localStorage.getItem('subtrack_db');
+  if (stored) {
+    database = JSON.parse(stored);
+  } else {
+    addSampleData();
+  }
+}
+
+function addSampleData() {
+  var today = new Date();
+  var d = function(days) {
+    var date = new Date(today);
+    date.setDate(date.getDate() + days);
+    return date.toISOString().split('T')[0];
+  };
+  
+  database.subs = [
+    {id: 1, name: 'Netflix', cost: 15.99, cycle: 'monthly', date: d(4), category: 'streaming', payment: 'Visa ••• 4242', notes: 'Family plan', paused: false},
+    {id: 2, name: 'Spotify', cost: 9.99, cycle: 'monthly', date: d(12), category: 'streaming', payment: 'Mastercard', notes: '', paused: false},
+    {id: 3, name: 'Adobe Creative Cloud', cost: 54.99, cycle: 'monthly', date: d(6), category: 'software', payment: 'Visa ••• 4242', notes: 'Design tools', paused: false},
+    {id: 4, name: 'GitHub Pro', cost: 4, cycle: 'monthly', date: d(3), category: 'tools', payment: '', notes: 'Developer tools', paused: false},
+    {id: 5, name: 'Figma', cost: 12, cycle: 'monthly', date: d(25), category: 'software', payment: 'PayPal', notes: 'UI Design', paused: false},
+    {id: 6, name: 'Notion', cost: 8, cycle: 'monthly', date: d(18), category: 'tools', payment: '', notes: 'Note taking', paused: false},
+    {id: 7, name: 'Disney+', cost: 10.99, cycle: 'monthly', date: d(45), category: 'streaming', payment: 'Visa ••• 4242', notes: '', paused: false},
+    {id: 8, name: 'Gym Membership', cost: 50, cycle: 'monthly', date: d(20), category: 'health', payment: 'Bank Account', notes: 'Planet Fitness', paused: false},
+    {id: 9, name: 'Skillshare', cost: 32, cycle: 'yearly', date: d(90), category: 'education', payment: 'Visa ••• 4242', notes: 'Online courses', paused: false}
+  ];
+  saveData();
+}
+
+function saveData() {
+  localStorage.setItem('subtrack_db', JSON.stringify(database));
+}
+
+function daysUntil(dateStr) {
+  var today = new Date();
+  today.setHours(0, 0, 0, 0);
+  var date = new Date(dateStr);
+  date.setHours(0, 0, 0, 0);
+  return Math.round((date - today) / 86400000);
+}
+
+function openAdd() {
+  document.getElementById('addModal').classList.add('show');
+}
+
+function closeAdd() {
+  document.getElementById('addModal').classList.remove('show');
+  document.getElementById('addName').value = '';
+  document.getElementById('addCost').value = '';
+  document.getElementById('addCycle').value = 'monthly';
+  document.getElementById('addDate').value = '';
+  document.getElementById('addCategory').value = 'other';
+  document.getElementById('addPayment').value = '';
+  document.getElementById('addNotes').value = '';
+}
+
+function openSetting() {
+  document.getElementById('currencyInput').value = database.currency;
+  document.getElementById('budgetInput').value = database.budget;
+  document.getElementById('settingModal').classList.add('show');
+}
+
+function closeSetting() {
+  document.getElementById('settingModal').classList.remove('show');
+}
+
+function saveSubscription() {
+  var name = document.getElementById('addName').value;
+  var cost = parseFloat(document.getElementById('addCost').value);
+  var cycle = document.getElementById('addCycle').value;
+  var date = document.getElementById('addDate').value;
+  var category = document.getElementById('addCategory').value;
+  var payment = document.getElementById('addPayment').value;
+  var notes = document.getElementById('addNotes').value;
+  
+  if (!name || !cost || !date) {
+    alert('Please fill in name, cost, and renewal date');
+    return;
+  }
+  
+  database.subs.push({
+    id: Date.now(),
+    name: name,
+    cost: cost,
+    cycle: cycle,
+    date: date,
+    category: category,
+    payment: payment,
+    notes: notes,
+    paused: false
+  });
+  
+  saveData();
+  render();
+  closeAdd();
+}
+
+function saveSetting() {
+  var cur = document.getElementById('currencyInput').value;
+  var budget = parseFloat(document.getElementById('budgetInput').value) || 0;
+  if (cur) {
+    database.currency = cur;
+  }
+  database.budget = budget;
+  saveData();
+  render();
+  closeSetting();
+}
+
+function deleteSubscription(id) {
+  for (var i = 0; i < database.subs.length; i++) {
+    if (database.subs[i].id === id) {
+      database.subs.splice(i, 1);
+      break;
+    }
+  }
+  saveData();
+  render();
+}
+
+function clearAllData() {
+  if (confirm('Delete ALL subscriptions? This cannot be undone.')) {
+    database.subs = [];
+    saveData();
+    render();
+    closeSetting();
+  }
+}
+
+function togglePause(id) {
+  for (var i = 0; i < database.subs.length; i++) {
+    if (database.subs[i].id === id) {
+      database.subs[i].paused = !database.subs[i].paused;
+      break;
+    }
+  }
+  saveData();
+  render();
+}
+
+function exportData() {
+  var text = JSON.stringify(database, null, 2);
+  var blob = new Blob([text], {type: 'application/json'});
+  var url = URL.createObjectURL(blob);
+  var a = document.createElement('a');
+  a.href = url;
+  a.download = 'subtrack_backup.json';
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+function toggleDark() {
+  database.dark = !database.dark;
+  document.body.classList.toggle('dark', database.dark);
+  saveData();
+}
+
+function showHelp() {
+  document.getElementById('help-section').classList.add('show');
+}
+
+function closeHelp() {
+  document.getElementById('help-section').classList.remove('show');
+}
+
+function render() {
+  var monthlyTotal = 0;
+  var yearlyTotal = 0;
+  var cur = database.currency;
+  var search = document.getElementById('search').value.toLowerCase();
+  var catFilter = document.getElementById('catFilter').value;
+  var sortBy = document.getElementById('sortBy').value;
+  
+  var filtered = [];
+  for (var i = 0; i < database.subs.length; i++) {
+    var s = database.subs[i];
+    if (search && s.name.toLowerCase().indexOf(search) === -1) continue;
+    if (catFilter && s.category !== catFilter) continue;
+    filtered.push(s);
+  }
+  
+  if (sortBy === 'cost') {
+    filtered.sort(function(a, b) { return b.cost - a.cost; });
+  } else if (sortBy === 'date') {
+    filtered.sort(function(a, b) { return daysUntil(a.date) - daysUntil(b.date); });
+  } else {
+    filtered.sort(function(a, b) { return a.name.localeCompare(b.name); });
+  }
+  
+  for (var i = 0; i < database.subs.length; i++) {
+    var sub = database.subs[i];
+    if (!sub.paused) {
+      if (sub.cycle === 'yearly') {
+        yearlyTotal += sub.cost;
+        monthlyTotal += sub.cost / 12;
+      } else {
+        monthlyTotal += sub.cost;
+        yearlyTotal += sub.cost * 12;
+      }
+    }
+  }
+  
+  document.getElementById('monthly').textContent = cur + monthlyTotal.toFixed(2);
+  document.getElementById('yearly').textContent = cur + yearlyTotal.toFixed(2);
+  
+  var budgetAlert = document.getElementById('budget-alert');
+  if (database.budget > 0 && monthlyTotal > database.budget) {
+    budgetAlert.textContent = 'Budget Alert: You are spending ' + cur + monthlyTotal.toFixed(2) + ' per month, but your budget is ' + cur + database.budget.toFixed(2);
+    budgetAlert.classList.remove('hidden');
+  } else {
+    budgetAlert.classList.add('hidden');
+  }
+  
+  var upcoming = [];
+  for (var i = 0; i < filtered.length; i++) {
+    var s = filtered[i];
+    var d = daysUntil(s.date);
+    if (!s.paused && d <= 30 && d >= 0) {
+      upcoming.push(s);
+    }
+  }
+  
+  var upHtml = '';
+  if (upcoming.length === 0) {
+    upHtml = '<div class="card">No renewals in the next 30 days</div>';
+  } else {
+    for (var i = 0; i < upcoming.length; i++) {
+      var s = upcoming[i];
+      var d = daysUntil(s.date);
+      var badge = '';
+      if (d === 0) badge = '<span class="days-badge soon">TODAY</span>';
+      else if (d <= 7) badge = '<span class="days-badge soon">' + d + 'd</span>';
+      else badge = '<span class="days-badge ok">' + d + 'd</span>';
+      
+      upHtml += '<div class="card">';
+      upHtml += '<div><strong>' + s.name + '</strong> ' + badge + '</div>';
+      upHtml += '<div class="card-meta">' + s.date + ' - ' + cur + s.cost.toFixed(2) + ' (' + s.cycle + ')</div>';
+      upHtml += '</div>';
+    }
+  }
+  document.getElementById('upcoming').innerHTML = upHtml;
+  
+  var html = '';
+  for (var i = 0; i < filtered.length; i++) {
+    var s = filtered[i];
+    var d = daysUntil(s.date);
+    var badge = '';
+    if (d < 0) badge = '<span class="days-badge soon">Overdue</span>';
+    else if (d === 0) badge = '<span class="days-badge soon">TODAY</span>';
+    else if (d <= 7) badge = '<span class="days-badge soon">' + d + 'd</span>';
+    else if (d <= 30) badge = '<span class="days-badge">' + d + 'd</span>';
+    else badge = '<span class="days-badge ok">' + d + 'd</span>';
+    
+    html += '<div class="card' + (s.paused ? ' card-paused' : '') + '">';
+    html += '<div style="display: flex; justify-content: space-between; align-items: center;">';
+    html += '<div>';
+    html += '<div class="card-name">' + s.name + ' ' + badge + '</div>';
+    html += '<div class="card-meta">' + s.date + (s.payment ? ' · ' + s.payment : '') + ' · ' + s.category + '</div>';
+    if (s.notes) html += '<div class="card-meta" style="margin-top: 5px;">Notes: ' + s.notes + '</div>';
+    html += '</div>';
+    html += '<div style="text-align: right;">';
+    html += '<strong>' + cur + s.cost.toFixed(2) + '</strong> (' + s.cycle + ')<br>';
+    html += '<button onclick="togglePause(' + s.id + ')" style="background: #ff9800; margin: 5px 2px;" title="' + (s.paused ? 'Resume this subscription' : 'Temporarily pause this subscription') + '">' + (s.paused ? '▶️ Resume' : '⏸️ Pause') + '</button>';
+    html += '<button onclick="deleteSubscription(' + s.id + ')" style="background: #d32f2f; margin: 5px 2px;" title="Permanently delete this subscription">🗑️ Delete</button>';
+    html += '</div>';
+    html += '</div>';
+    html += '</div>';
+  }
+  
+  if (filtered.length === 0) {
+    html = '<div class="card">No subscriptions found.</div>';
+  }
+  
+  document.getElementById('subscriptions').innerHTML = html;
+}
+
+loadData();
+if (database.dark) document.body.classList.add('dark');
+render();
+</script>
+
+</body>
+</html>
